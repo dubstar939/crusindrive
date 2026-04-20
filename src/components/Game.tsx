@@ -54,31 +54,35 @@ const SEGMENT_LENGTH = 6;
 const VISIBLE_SEGMENTS = 180;
 const ROAD_PIECES = 50;
 
-// Open city track design with outer drift zones
+// Open city track design with outer drift zones and rally areas
 const TRACK_DESIGN = {
   // Circuit layout: defines the track path as segments with turn radii
+  // Optimized for 45-90 second laps at typical speeds
   circuit: [
-    { type: 'straight', length: 25 },      // Main straight
-    { type: 'curve', radius: 1.2, angle: 90 },   // Turn 1 - hairpin entry
-    { type: 'straight', length: 18 },      // Back section
-    { type: 'curve', radius: 0.8, angle: 60 },   // Turn 2 - tight corner
-    { type: 'straight', length: 12 },      // Short straight
-    { type: 'curve', radius: 1.5, angle: 120 },  // Turn 3 - sweeping bend
-    { type: 'straight', length: 20 },      // Riverside straight
-    { type: 'curve', radius: 1.0, angle: 90 },   // Turn 4 - city corner
-    { type: 'straight', length: 15 },      // Final straight back to start
+    { type: 'straight', length: 28 },      // Main straight - longer for speed buildup
+    { type: 'curve', radius: 1.4, angle: 90 },   // Turn 1 - wide hairpin for drift entry
+    { type: 'straight', length: 22 },      // Back section
+    { type: 'curve', radius: 0.9, angle: 75 },   // Turn 2 - tight technical corner
+    { type: 'straight', length: 16 },      // Short straight to rally zone
+    { type: 'curve', radius: 1.8, angle: 135 },  // Turn 3 - long sweeping drift corner
+    { type: 'straight', length: 24 },      // Riverside straight
+    { type: 'curve', radius: 1.1, angle: 90 },   // Turn 4 - city corner with runoff
+    { type: 'straight', length: 18 },      // Final straight back to start/finish
   ],
-  // Drift zones on the outer perimeter
+  // Drift zones on the outer perimeter - larger areas for extended drifts
   driftZones: [
-    { x: -80, z: 100, radius: 35, surface: 'gravel' },
-    { x: 80, z: 200, radius: 30, surface: 'dirt' },
-    { x: 0, z: 400, radius: 40, surface: 'gravel' },
-    { x: -60, z: 500, radius: 25, surface: 'dirt' },
+    { x: -90, z: 120, radius: 45, surface: 'gravel' },   // NW gravel drift pad
+    { x: 95, z: 220, radius: 38, surface: 'dirt' },      // NE dirt rally circle
+    { x: 10, z: 420, radius: 50, surface: 'gravel' },    // N large gravel arena
+    { x: -75, z: 530, radius: 32, surface: 'dirt' },     // NW dirt skid pad
+    { x: 110, z: 80, radius: 28, surface: 'gravel' },    // E technical gravel zone
+    { x: -110, z: 350, radius: 35, surface: 'dirt' },    // W dirt drift course
   ],
-  // Rally shortcuts cutting through the city
+  // Rally shortcuts cutting through the city - alternative paths
   shortcuts: [
-    { from: 45, to: 65, difficulty: 'hard' },
-    { from: 120, to: 140, difficulty: 'medium' },
+    { from: 40, to: 60, difficulty: 'hard', surface: 'dirt' },
+    { from: 110, to: 130, difficulty: 'medium', surface: 'gravel' },
+    { from: 170, to: 185, difficulty: 'easy', surface: 'dirt' },
   ],
 };
 
@@ -774,60 +778,61 @@ export default function Game({
     let rot = 0;
     let curve = 0;
     
-    // Use track design for circuit layout
-    let segmentIndex = 0;
-    let currentTrackPart = TRACK_DESIGN.circuit[0];
-    let progressInPart = 0;
-    
-    for (let i = 0; i < VISIBLE_SEGMENTS; i++) {
-      // Advance through track parts
-      progressInPart += SEGMENT_LENGTH;
-      if (progressInPart >= currentTrackPart.length * SEGMENT_LENGTH && currentTrackPart.type === 'straight') {
-        segmentIndex++;
-        currentTrackPart = TRACK_DESIGN.circuit[segmentIndex % TRACK_DESIGN.circuit.length];
-        progressInPart = 0;
-        // Apply turn rotation when entering curve
-        if (currentTrackPart.type === 'curve') {
-          rot += (currentTrackPart.angle * Math.PI / 180) / (currentTrackPart.length);
+    // Build complete circuit path from track design for smoother transitions
+    const circuitPath: Array<{ type: string; radius?: number; turnAmount?: number; curveVar?: number }> = [];
+    TRACK_DESIGN.circuit.forEach((part) => {
+      if (part.type === 'straight') {
+        for (let s = 0; s < part.length; s++) {
+          circuitPath.push({ type: 'straight', curveVar: (Math.random() - 0.5) * 0.12 });
+        }
+      } else if (part.type === 'curve') {
+        const turnPerSegment = (part.angle! * Math.PI / 180) / part.length;
+        for (let s = 0; s < part.length; s++) {
+          circuitPath.push({ type: 'curve', radius: part.radius, turnAmount: turnPerSegment });
         }
       }
+    });
+    
+    // Generate segments following the circuit path, looping as needed
+    let pathIndex = 0;
+    for (let i = 0; i < VISIBLE_SEGMENTS; i++) {
+      const pathPart = circuitPath[pathIndex % circuitPath.length];
       
-      // Apply curve based on track design
-      if (currentTrackPart.type === 'curve') {
-        curve = currentTrackPart.radius * 0.8;
-        rot += curve * 0.02;
+      if (pathPart.type === 'curve' && pathPart.turnAmount) {
+        curve = (pathPart.radius || 1.0) * 0.7;
+        rot += pathPart.turnAmount;
       } else {
-        // Straight sections - minimal curve with slight variation for realism
-        if (i % 20 === 0) {
-          curve = (Math.random() - 0.5) * 0.3;
-        }
-        rot += curve * 0.01;
+        // Straight sections with subtle variation for natural feel
+        curve = pathPart.curveVar || 0;
+        rot += curve * 0.008;
       }
       
       x += Math.sin(rot) * SEGMENT_LENGTH;
       z += Math.cos(rot) * SEGMENT_LENGTH;
       segments.push({ position: new THREE.Vector3(x, 0, z), rotation: rot, curve });
+      pathIndex++;
     }
 
-    // Props - placed along the circuit with clear sightlines
+    // Props - placed along the circuit with clear sightlines for mobile readability
     const props: Array<{ position: THREE.Vector3; scale: number; type: string; color: string; width: number; height: number; depth: number }> = [];
-    for (let i = 0; i < 180; i++) {
+    for (let i = 0; i < 160; i++) {
       const segIndex = Math.floor(Math.random() * VISIBLE_SEGMENTS);
       const seg = segments[segIndex];
       if (!seg) continue;
       const side = Math.random() > 0.5 ? 1 : -1;
-      // Wider spacing for open city feel
-      const dist = 18 + Math.random() * 35;
-      const zOff = (Math.random() - 0.5) * SEGMENT_LENGTH * 4;
+      // Wider spacing for open city feel and clear corner telegraphing
+      const dist = 22 + Math.random() * 40;
+      const zOff = (Math.random() - 0.5) * SEGMENT_LENGTH * 3;
       const typeArr = terrainConfig.propTypes;
       const type = typeArr[Math.floor(Math.random() * typeArr.length)];
       const color = type === 'building'
         ? terrainConfig.buildingColors[Math.floor(Math.random() * terrainConfig.buildingColors.length)]
         : type === 'tree' ? '#2D5A27' : type === 'palm' ? '#8B6914' : '#666';
 
-      const w = type === 'building' ? 3 + Math.random() * 4 : 1;
-      const h = type === 'building' ? 5 + Math.random() * 10 : 1;
-      const d = type === 'building' ? 3 + Math.random() * 4 : 1;
+      // Simplified building sizes for clean silhouettes
+      const w = type === 'building' ? 4 + Math.random() * 3 : 1;
+      const h = type === 'building' ? 6 + Math.random() * 8 : 1;
+      const d = type === 'building' ? 4 + Math.random() * 3 : 1;
 
       props.push({
         position: new THREE.Vector3(
@@ -835,32 +840,32 @@ export default function Game({
           0,
           seg.position.z + zOff,
         ),
-        scale: 0.8 + Math.random() * 0.6,
+        scale: 0.9 + Math.random() * 0.4,
         type,
         color,
         width: w, height: h, depth: d,
       });
     }
 
-    // Mountains (background) - simplified silhouettes
+    // Mountains (background) - reduced count for mobile, larger shapes for clear silhouettes
     const mountains: Array<{ position: THREE.Vector3; radius: number; height: number; color: string }> = [];
-    for (let i = 0; i < 20; i++) {
-      const segIndex = Math.floor((i / 20) * VISIBLE_SEGMENTS);
+    for (let i = 0; i < 16; i++) {
+      const segIndex = Math.floor((i / 16) * VISIBLE_SEGMENTS);
       const seg = segments[segIndex] || segments[0];
       const side = i % 2 === 0 ? 1 : -1;
       mountains.push({
         position: new THREE.Vector3(
-          seg.position.x + side * (100 + Math.random() * 100),
+          seg.position.x + side * (120 + Math.random() * 80),
           0,
-          seg.position.z + (Math.random() - 0.5) * 80,
+          seg.position.z + (Math.random() - 0.5) * 60,
         ),
-        radius: 20 + Math.random() * 30,
-        height: 30 + Math.random() * 50,
+        radius: 25 + Math.random() * 35,
+        height: 40 + Math.random() * 45,
         color: environment === 'coastal' ? '#5A7A4A' : environment === 'mountain' ? '#6B7B6B' : '#889988',
       });
     }
     
-    // Drift zone markers
+    // Drift zone markers - positioned on outer perimeter for rally/drifting
     const driftZones: Array<{ position: THREE.Vector3; radius: number; surface: string }> = [];
     TRACK_DESIGN.driftZones.forEach(zone => {
       driftZones.push({
@@ -929,17 +934,19 @@ export default function Game({
     positionRef.current.x += Math.sin(rotationRef.current) * speedRef.current * delta * 0.28;
     positionRef.current.z += Math.cos(rotationRef.current) * speedRef.current * delta * 0.28;
 
-    // Off-road and drift zone detection
+    // Off-road and drift zone detection with enhanced rally physics
     const roadData = roadSegmentsRef.current;
     let inDriftZone = false;
+    let currentDriftSurface = '';
     
-    // Check if player is in any drift zone
+    // Check if player is in any drift zone - outer perimeter areas
     for (const dz of driftZoneData) {
       const dx = positionRef.current.x - dz.position.x;
       const ddz = positionRef.current.z - dz.position.z;
       const distToDriftCenter = Math.sqrt(dx * dx + ddz * ddz);
       if (distToDriftCenter < dz.radius) {
         inDriftZone = true;
+        currentDriftSurface = dz.surface;
         break;
       }
     }
@@ -953,15 +960,17 @@ export default function Game({
         if (dist < ROAD_WIDTH / 2 + 1.5) { onRoad = true; break; }
       }
       
-      // In drift zones: enhanced drift physics, less slowdown
+      // In drift zones: enhanced drift physics with surface-specific handling
       if (inDriftZone) {
         onOffRoadChange(false);
-        speedRef.current *= config.driftFactor; // Better slide in drift zones
+        // Gravel offers more slide, dirt is slightly more grippy
+        const surfaceDriftFactor = currentDriftSurface === 'gravel' ? config.driftFactor * 0.97 : config.driftFactor;
+        speedRef.current *= surfaceDriftFactor; // Better slide in drift zones
       } else {
         onOffRoadChange(!onRoad && Math.abs(speedRef.current) > 8);
         // Slow down off-road (but not in drift zones)
         if (!onRoad) {
-          speedRef.current *= 0.995;
+          speedRef.current *= 0.993;
         }
       }
     }
@@ -1166,28 +1175,33 @@ export default function Game({
         ))}
       </group>
 
-      {/* Drift zones - outer perimeter areas for drifting and rally */}
+      {/* Drift zones - outer perimeter areas for drifting and rally with high-contrast markers */}
       <group ref={driftZoneRef}>
         {driftZoneData.map((dz, i) => (
           <group key={i} position={dz.position}>
-            {/* Drift zone surface - gravel/dirt with distinct color */}
+            {/* Drift zone surface - gravel/dirt with distinct high-contrast color */}
             <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.01, 0]} receiveShadow>
               <circleGeometry args={[dz.radius, 8]} />
               <meshStandardMaterial 
-                color={dz.surface === 'gravel' ? '#8B7355' : '#6B5340'} 
-                roughness={0.95} 
+                color={dz.surface === 'gravel' ? '#9A7B4F' : '#7D5A3E'} 
+                roughness={0.92} 
                 metalness={0.0}
               />
             </mesh>
-            {/* Drift zone marker cones */}
-            {Array.from({ length: 8 }).map((_, j) => {
-              const angle = (j / 8) * Math.PI * 2;
-              const coneX = Math.cos(angle) * dz.radius * 0.9;
-              const coneZ = Math.sin(angle) * dz.radius * 0.9;
+            {/* Outer ring marker for clear telegraphing */}
+            <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.03, 0]}>
+              <ringGeometry args={[dz.radius * 0.92, dz.radius, 8]} />
+              <meshBasicMaterial color="#FFFFFF" transparent opacity={0.6} side={2} />
+            </mesh>
+            {/* Drift zone marker cones - evenly spaced around perimeter */}
+            {Array.from({ length: 10 }).map((_, j) => {
+              const angle = (j / 10) * Math.PI * 2;
+              const coneX = Math.cos(angle) * dz.radius * 0.95;
+              const coneZ = Math.sin(angle) * dz.radius * 0.95;
               return (
-                <mesh key={j} position={[coneX, 0.6, coneZ]} castShadow>
-                  <coneGeometry args={[0.3, 1.2, 4]} />
-                  <meshStandardMaterial color="#FF6B35" emissive="#FF6B35" emissiveIntensity={0.3} />
+                <mesh key={j} position={[coneX, 0.7, coneZ]} castShadow>
+                  <coneGeometry args={[0.35, 1.4, 4]} />
+                  <meshStandardMaterial color="#FF6B35" emissive="#FF6B35" emissiveIntensity={0.4} />
                 </mesh>
               );
             })}

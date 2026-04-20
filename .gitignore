@@ -1,9 +1,12 @@
-```
+```gitignore
 # Dependencies
 node_modules/
 
-# Build artifacts
+# Build outputs
 dist/
+build/
+*.js.map
+*.tsbuildinfo
 
 # Environment
 .env
@@ -13,11 +16,14 @@ dist/
 # Editors
 .vscode/
 .idea/
+*.swp
+*.swo
 
 # Logs
 *.log
 
-# OS generated files
+# Temporary files
+*.tmp
 .DS_Store
 Thumbs.db
 
@@ -30,19 +36,68 @@ __pycache__/
 env/
 venv/
 .venv/
-
-# Temporary files
-*.tmp
-*.temp
-*.swp
-*~
+pip-log.txt
+pip-selfcheck.json
 
 # Coverage
 coverage/
 htmlcov/
 .coverage
 
-# Compressed files
+# Testing
+.mypy_cache/
+.pytest_cache/
+.nyc_output/
+
+# Node.js
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Java
+*.class
+*.jar
+*.war
+*.ear
+target/
+.gradle/
+
+# C/C++
+*.o
+*.a
+*.so
+*.dll
+*.exe
+*.out
+
+# Go
+*.exe
+*.test
+*.prof
+vendor/
+
+# Ruby
+*.gem
+*.rbc
+.bundle/
+.rbenv-gemsets/
+.rbenv-version/
+.gem/
+.Gemfile.lock
+.rake_tasks~
+
+# Rust
+Cargo.lock
+target/
+
+# Julia
+julia-*/
+
+# Zig
+zig-cache/
+zig-out/
+
+# Compression
 *.zip
 *.gz
 *.tar
@@ -65,5 +120,4 @@ htmlcov/
 *.tar.bz2
 *.tar.xz
 *.tar.zst
-
 ```
