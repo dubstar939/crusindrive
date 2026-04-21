@@ -49,41 +49,212 @@ const VEHICLE_CONFIGS = {
   },
 };
 
-const ROAD_WIDTH = 14;
 const SEGMENT_LENGTH = 6;
 const VISIBLE_SEGMENTS = 180;
 const ROAD_PIECES = 50;
 
-// Open city track design with outer drift zones and rally areas
-const TRACK_DESIGN = {
-  // Circuit layout: defines the track path as segments with turn radii
-  // Optimized for 45-90 second laps at typical speeds
-  circuit: [
-    { type: 'straight', length: 28 },      // Main straight - longer for speed buildup
-    { type: 'curve', radius: 1.4, angle: 90 },   // Turn 1 - wide hairpin for drift entry
-    { type: 'straight', length: 22 },      // Back section
-    { type: 'curve', radius: 0.9, angle: 75 },   // Turn 2 - tight technical corner
-    { type: 'straight', length: 16 },      // Short straight to rally zone
-    { type: 'curve', radius: 1.8, angle: 135 },  // Turn 3 - long sweeping drift corner
-    { type: 'straight', length: 24 },      // Riverside straight
-    { type: 'curve', radius: 1.1, angle: 90 },   // Turn 4 - city corner with runoff
-    { type: 'straight', length: 18 },      // Final straight back to start/finish
-  ],
-  // Drift zones on the outer perimeter - larger areas for extended drifts
-  driftZones: [
-    { x: -90, z: 120, radius: 45, surface: 'gravel' },   // NW gravel drift pad
-    { x: 95, z: 220, radius: 38, surface: 'dirt' },      // NE dirt rally circle
-    { x: 10, z: 420, radius: 50, surface: 'gravel' },    // N large gravel arena
-    { x: -75, z: 530, radius: 32, surface: 'dirt' },     // NW dirt skid pad
-    { x: 110, z: 80, radius: 28, surface: 'gravel' },    // E technical gravel zone
-    { x: -110, z: 350, radius: 35, surface: 'dirt' },    // W dirt drift course
-  ],
-  // Rally shortcuts cutting through the city - alternative paths
-  shortcuts: [
-    { from: 40, to: 60, difficulty: 'hard', surface: 'dirt' },
-    { from: 110, to: 130, difficulty: 'medium', surface: 'gravel' },
-    { from: 170, to: 185, difficulty: 'easy', surface: 'dirt' },
-  ],
+// ====================================================================
+// OPEN WORLD CITY BLOCK SYSTEM
+// ====================================================================
+
+export interface CityBlockData {
+  id: string;
+  gridX: number;
+  gridZ: number;
+  blockType: 'straight_ns' | 'straight_ew' | 'intersection_4way' | 'curve_ne' | 'curve_nw' | 'curve_se' | 'curve_sw' | 'plaza';
+  rotation: number;
+  hasBuildings: boolean;
+  buildingDensity: number;
+  speedLimit: number;
+  districtName: string;
+}
+
+export interface RoadNode {
+  id: string;
+  position: THREE.Vector3;
+  connections: string[];
+  speedLimit: number;
+  nodeType: 'intersection' | 'waypoint' | 'start_finish';
+}
+
+export interface Checkpoint {
+  index: number;
+  position: THREE.Vector3;
+  radius: number;
+  routeId: string;
+  passed: boolean;
+}
+
+export interface Route {
+  id: string;
+  name: string;
+  checkpoints: Checkpoint[];
+  lapDistance: number;
+}
+
+// City grid configuration
+const CITY_GRID_SIZE = 6;
+const BLOCK_SIZE = 100;
+const CITY_ROAD_WIDTH = 14;
+const LANE_WIDTH = 3.5;
+
+// District definitions
+const DISTRICTS = {
+  downtown: { name: 'Downtown', buildingDensity: 0.9, speedLimit: 40, color: '#8899AA' },
+  industrial: { name: 'Industrial', buildingDensity: 0.5, speedLimit: 50, color: '#6B7B6B' },
+  coastal: { name: 'Coastal', buildingDensity: 0.3, speedLimit: 60, color: '#E8C07A' },
+  residential: { name: 'Residential', buildingDensity: 0.6, speedLimit: 35, color: '#D4A07A' },
+};
+
+// Generate city layout - creates a connected street network
+const generateCityLayout = (): CityBlockData[] => {
+  const blocks: CityBlockData[] = [];
+  
+  for (let x = 0; x < CITY_GRID_SIZE; x++) {
+    for (let z = 0; z < CITY_GRID_SIZE; z++) {
+      const gridX = x - CITY_GRID_SIZE / 2;
+      const gridZ = z - CITY_GRID_SIZE / 2;
+      
+      // Determine block type based on position
+      let blockType: CityBlockData['blockType'] = 'straight_ns';
+      let rotation = 0;
+      
+      // Center area has more intersections
+      const distFromCenter = Math.abs(gridX) + Math.abs(gridZ);
+      
+      if (distFromCenter < 2) {
+        // Downtown core - mostly 4-way intersections
+        blockType = Math.random() > 0.3 ? 'intersection_4way' : 'straight_ns';
+      } else if (distFromCenter < 4) {
+        // Mid city - mix of intersections and straights
+        const rand = Math.random();
+        if (rand < 0.25) blockType = 'intersection_4way';
+        else if (rand < 0.4) blockType = 'intersection_3way_n';
+        else if (rand < 0.55) blockType = 'curve_ne';
+        else blockType = 'straight_ns';
+      } else {
+        // Outer areas - more curves and straights
+        const rand = Math.random();
+        if (rand < 0.15) blockType = 'intersection_4way';
+        else if (rand < 0.25) blockType = 'curve_ne';
+        else if (rand < 0.35) blockType = 'curve_nw';
+        else blockType = Math.random() > 0.5 ? 'straight_ns' : 'straight_ew';
+      }
+      
+      // Edge cases - connect to highway loop
+      if (Math.abs(gridX) === CITY_GRID_SIZE / 2 - 1 || Math.abs(gridZ) === CITY_GRID_SIZE / 2 - 1) {
+        if (Math.abs(gridX) === CITY_GRID_SIZE / 2 - 1 && Math.abs(gridZ) === CITY_GRID_SIZE / 2 - 1) {
+          blockType = 'curve_ne';
+        } else if (Math.abs(gridX) === CITY_GRID_SIZE / 2 - 1) {
+          blockType = 'straight_ew';
+        } else {
+          blockType = 'straight_ns';
+        }
+      }
+      
+      // Determine district
+      let districtName = 'residential';
+      if (distFromCenter < 2) districtName = 'downtown';
+      else if (gridX > 2 && gridZ < -2) districtName = 'industrial';
+      else if (gridX < -2) districtName = 'coastal';
+      
+      blocks.push({
+        id: `block_${gridX}_${gridZ}`,
+        gridX,
+        gridZ,
+        blockType,
+        rotation,
+        hasBuildings: Math.random() > 0.2,
+        buildingDensity: DISTRICTS[districtName as keyof typeof DISTRICTS].buildingDensity,
+        speedLimit: DISTRICTS[districtName as keyof typeof DISTRICTS].speedLimit,
+        districtName,
+      });
+    }
+  }
+  
+  return blocks;
+};
+
+// Generate road graph nodes from city layout
+const generateRoadGraph = (blocks: CityBlockData[]): RoadNode[] => {
+  const nodes: RoadNode[] = [];
+  let nodeId = 0;
+  
+  blocks.forEach(block => {
+    const worldX = block.gridX * BLOCK_SIZE;
+    const worldZ = block.gridZ * BLOCK_SIZE;
+    
+    // Add node at center of each intersection block
+    if (block.blockType.includes('intersection')) {
+      nodes.push({
+        id: `node_${nodeId++}`,
+        position: new THREE.Vector3(worldX, 0, worldZ),
+        connections: [], // Will be populated later
+        speedLimit: block.speedLimit,
+        nodeType: 'intersection',
+      });
+    }
+    
+    // Add waypoint nodes for straight sections
+    if (block.blockType.startsWith('straight') || block.blockType.startsWith('curve')) {
+      nodes.push({
+        id: `node_${nodeId++}`,
+        position: new THREE.Vector3(worldX, 0, worldZ),
+        connections: [],
+        speedLimit: block.speedLimit,
+        nodeType: 'waypoint',
+      });
+    }
+  });
+  
+  // Connect adjacent nodes
+  nodes.forEach(node => {
+    nodes.forEach(other => {
+      if (node.id === other.id) return;
+      const dist = node.position.distanceTo(other.position);
+      if (dist < BLOCK_SIZE * 1.5) {
+        if (!node.connections.includes(other.id)) {
+          node.connections.push(other.id);
+        }
+      }
+    });
+  });
+  
+  return nodes;
+};
+
+// Define main city loop route
+const createCityLoopRoute = (nodes: RoadNode[]): Route => {
+  const checkpoints: Checkpoint[] = [];
+  const outerNodes = nodes.filter(n => {
+    const x = Math.abs(n.position.x);
+    const z = Math.abs(n.position.z);
+    return x > BLOCK_SIZE * 2 || z > BLOCK_SIZE * 2;
+  });
+  
+  // Sort nodes by angle around center to create a loop
+  outerNodes.sort((a, b) => {
+    const angleA = Math.atan2(a.position.z, a.position.x);
+    const angleB = Math.atan2(b.position.z, b.position.x);
+    return angleA - angleB;
+  });
+  
+  outerNodes.forEach((node, index) => {
+    checkpoints.push({
+      index,
+      position: node.position.clone(),
+      radius: 25,
+      routeId: 'city_loop',
+      passed: false,
+    });
+  });
+  
+  return {
+    id: 'city_loop',
+    name: 'City Loop',
+    checkpoints,
+    lapDistance: outerNodes.length * BLOCK_SIZE,
+  };
 };
 
 // ====================================================================
