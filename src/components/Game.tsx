@@ -713,6 +713,7 @@ export default function Game({
   const propsRef = useRef<THREE.Group>(null);
   const mountainsRef = useRef<THREE.Group>(null);
   const driftZoneRef = useRef<THREE.Group>(null);
+  const driftZonePositionsRef = useRef<Array<{ x: number; z: number; radius: number; surface: string }>>([]);
 
   const config = VEHICLE_CONFIGS[vehicle];
 
@@ -771,7 +772,7 @@ export default function Game({
   }, [environment]);
 
   // --- ROAD GENERATION: OPEN CITY CIRCUIT WITH DRIFT ZONES ---
-  const { roadSegments, propData, mountainData, driftZoneData } = useMemo(() => {
+  const { roadSegments, propData, mountainData, driftZoneData, driftZonePositions } = useMemo(() => {
     const segments: RoadSegment[] = [];
     let x = 0;
     let z = 0;
@@ -867,20 +868,32 @@ export default function Game({
     
     // Drift zone markers - positioned on outer perimeter for rally/drifting
     const driftZones: Array<{ position: THREE.Vector3; radius: number; surface: string }> = [];
+    const driftZonePositions: Array<{ x: number; z: number; radius: number; surface: string }> = [];
     TRACK_DESIGN.driftZones.forEach(zone => {
+      const pos = new THREE.Vector3(zone.x, 0, zone.z);
       driftZones.push({
-        position: new THREE.Vector3(zone.x, 0, zone.z),
+        position: pos,
+        radius: zone.radius,
+        surface: zone.surface,
+      });
+      driftZonePositions.push({
+        x: zone.x,
+        z: zone.z,
         radius: zone.radius,
         surface: zone.surface,
       });
     });
 
-    return { roadSegments: segments, propData: props, mountainData: mountains, driftZoneData: driftZones };
+    return { roadSegments: segments, propData: props, mountainData: mountains, driftZoneData: driftZones, driftZonePositions };
   }, [environment, terrainConfig]);
 
   useEffect(() => {
     roadSegmentsRef.current = roadSegments;
   }, [roadSegments]);
+
+  useEffect(() => {
+    driftZonePositionsRef.current = driftZonePositions;
+  }, [driftZonePositions]);
 
   // --- IMPROVED PHYSICS / FRAME LOOP ---
   useFrame((_, rawDelta) => {
@@ -940,9 +953,9 @@ export default function Game({
     let currentDriftSurface = '';
     
     // Check if player is in any drift zone - outer perimeter areas
-    for (const dz of driftZoneData) {
-      const dx = positionRef.current.x - dz.position.x;
-      const ddz = positionRef.current.z - dz.position.z;
+    for (const dz of driftZonePositionsRef.current) {
+      const dx = positionRef.current.x - dz.x;
+      const ddz = positionRef.current.z - dz.z;
       const distToDriftCenter = Math.sqrt(dx * dx + ddz * ddz);
       if (distToDriftCenter < dz.radius) {
         inDriftZone = true;
@@ -1069,14 +1082,21 @@ export default function Game({
     }
     
     // Recycle drift zones (loop them around the track)
-    if (driftZoneRef.current) {
+    if (driftZoneRef.current && driftZonePositionsRef.current.length > 0) {
       const playerZ = positionRef.current.z;
+      const trackLength = VISIBLE_SEGMENTS * SEGMENT_LENGTH;
+      
       driftZoneRef.current.children.forEach((dz, i) => {
-        const zd = driftZoneData[i];
+        const zd = driftZonePositionsRef.current[i];
         if (zd) {
-          const relZ = zd.position.z - playerZ;
+          const relZ = zd.z - playerZ;
+          // Wrap drift zone positions when player passes them
           if (relZ < -200) {
-            zd.position.z += VISIBLE_SEGMENTS * SEGMENT_LENGTH * 0.8;
+            zd.z += trackLength;
+            dz.position.z = zd.z;
+          } else if (relZ > trackLength + 200) {
+            zd.z -= trackLength;
+            dz.position.z = zd.z;
           }
         }
       });
