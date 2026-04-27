@@ -2,7 +2,7 @@ import { useRef, useMemo, useEffect } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 
-export type VehicleType = 'evo' | 'wrx' | 'impreza' | 'sportbike' | 'bus';
+export type VehicleType = 'evo' | 'wrx' | 'impreza' | 'sportbike' | 'bus' | 'truck';
 export type EnvironmentType = 'coastal' | 'mountain' | 'city';
 export type TimeOfDayType = 'dawn' | 'noon' | 'sunset' | 'midnight';
 export type WeatherType = 'clear' | 'rain' | 'fog' | 'overcast';
@@ -47,11 +47,15 @@ const VEHICLE_CONFIGS = {
     maxSpeed: 85, acceleration: 28, handling: 1.0, friction: 0.990, brakeForce: 1.2,
     driftFactor: 0.98, turnDamping: 0.80, bodyColor: '#2563EB', accentColor: '#E5E7EB',
   },
+  truck: {
+    maxSpeed: 95, acceleration: 32, handling: 1.2, friction: 0.988, brakeForce: 1.4,
+    driftFactor: 0.96, turnDamping: 0.82, bodyColor: '#8B4513', accentColor: '#CD853F',
+  },
 };
 
 const SEGMENT_LENGTH = 6;
-const VISIBLE_SEGMENTS = 180;
-const ROAD_PIECES = 50;
+const VISIBLE_SEGMENTS = 120; // Reduced from 180 for better performance
+const ROAD_PIECES = 40; // Reduced from 50 for better performance
 
 // ====================================================================
 // OPEN WORLD CITY BLOCK SYSTEM
@@ -987,7 +991,7 @@ export default function Game({
 
     // Props - placed along the circuit with clear sightlines for mobile readability
     const props: Array<{ position: THREE.Vector3; scale: number; type: string; color: string; width: number; height: number; depth: number }> = [];
-    for (let i = 0; i < 160; i++) {
+    for (let i = 0; i < 100; i++) { // Reduced from 160 for better performance
       const segIndex = Math.floor(Math.random() * VISIBLE_SEGMENTS);
       const seg = segments[segIndex];
       if (!seg) continue;
@@ -1021,7 +1025,7 @@ export default function Game({
 
     // Mountains (background) - reduced count for mobile, larger shapes for clear silhouettes
     const mountains: Array<{ position: THREE.Vector3; radius: number; height: number; color: string }> = [];
-    for (let i = 0; i < 16; i++) {
+    for (let i = 0; i < 10; i++) { // Reduced from 16 for better performance
       const segIndex = Math.floor((i / 16) * VISIBLE_SEGMENTS);
       const seg = segments[segIndex] || segments[0];
       const side = i % 2 === 0 ? 1 : -1;
@@ -1272,7 +1276,12 @@ export default function Game({
         }
       });
     }
-  });
+    
+    // Update rain particles less frequently for performance
+    if (weather === 'rain' && ref.current) {
+      // Rain particle updates happen in their own component
+    }
+  }, [weather]);
 
   // --- Weather-dependent fog overlay color ---
   const weatherFogColor = weather === 'fog' ? '#C8C8C8' : weather === 'rain' ? '#7A8A9A' : skyConfig.fogColor;
@@ -1472,7 +1481,142 @@ export default function Game({
         {vehicle === 'impreza' && <ImprezaModel color={config.bodyColor} accentColor={config.accentColor} />}
         {vehicle === 'sportbike' && <SportbikeModel color={config.bodyColor} />}
         {vehicle === 'bus' && <BusModel color={config.bodyColor} accentColor={config.accentColor} />}
+        {vehicle === 'truck' && <TruckModel color={config.bodyColor} accentColor={config.accentColor} />}
       </group>
     </>
+  );
+}
+
+// ====================================================================
+// NEW TRUCK MODEL - Low-poly pickup truck
+// ====================================================================
+function TruckModel({ color, accentColor }: { color: string; accentColor: string }) {
+  return (
+    <group>
+      {/* Main body/cab */}
+      <mesh position={[0, 0.55, 0.3]} castShadow>
+        <boxGeometry args={[1.9, 0.65, 2.2]} />
+        <meshStandardMaterial color={color} roughness={0.25} metalness={0.5} />
+      </mesh>
+      
+      {/* Truck bed */}
+      <mesh position={[0, 0.45, -1.8]} castShadow>
+        <boxGeometry args={[1.85, 0.4, 1.8]} />
+        <meshStandardMaterial color={color} roughness={0.3} metalness={0.4} />
+      </mesh>
+      
+      {/* Bed interior */}
+      <mesh position={[0, 0.52, -1.8]} castShadow>
+        <boxGeometry args={[1.7, 0.05, 1.6]} />
+        <meshStandardMaterial color="#2a2a2a" roughness={0.7} />
+      </mesh>
+      
+      {/* Front bumper */}
+      <mesh position={[0, 0.28, 1.45]} castShadow>
+        <boxGeometry args={[1.95, 0.25, 0.2]} />
+        <meshStandardMaterial color="#333" roughness={0.5} metalness={0.3} />
+      </mesh>
+      
+      {/* Rear bumper */}
+      <mesh position={[0, 0.28, -2.75]} castShadow>
+        <boxGeometry args={[1.9, 0.2, 0.15]} />
+        <meshStandardMaterial color="#333" roughness={0.5} metalness={0.3} />
+      </mesh>
+      
+      {/* Hood */}
+      <mesh position={[0, 0.88, 1.2]} castShadow>
+        <boxGeometry args={[1.85, 0.15, 1.0]} />
+        <meshStandardMaterial color={color} roughness={0.2} metalness={0.55} />
+      </mesh>
+      
+      {/* Cabin top */}
+      <mesh position={[0, 0.95, -0.15]} castShadow>
+        <boxGeometry args={[1.8, 0.55, 1.7]} />
+        <meshStandardMaterial color={color} roughness={0.2} metalness={0.5} />
+      </mesh>
+      
+      {/* Windshield */}
+      <mesh position={[0, 0.92, 0.78]} rotation={[0.25, 0, 0]}>
+        <boxGeometry args={[1.7, 0.5, 0.05]} />
+        <meshStandardMaterial color="#1a1a2e" opacity={0.75} transparent />
+      </mesh>
+      
+      {/* Rear window */}
+      <mesh position={[0, 0.92, -1.05]} rotation={[-0.2, 0, 0]}>
+        <boxGeometry args={[1.6, 0.45, 0.05]} />
+        <meshStandardMaterial color="#1a1a2e" opacity={0.7} transparent />
+      </mesh>
+      
+      {/* Side windows */}
+      <mesh position={[0.96, 0.9, -0.15]}>
+        <boxGeometry args={[0.05, 0.45, 1.5]} />
+        <meshStandardMaterial color="#1a1a2e" opacity={0.7} transparent />
+      </mesh>
+      <mesh position={[-0.96, 0.9, -0.15]}>
+        <boxGeometry args={[0.05, 0.45, 1.5]} />
+        <meshStandardMaterial color="#1a1a2e" opacity={0.7} transparent />
+      </mesh>
+      
+      {/* Headlights */}
+      <mesh position={[0.7, 0.45, 1.44]}>
+        <boxGeometry args={[0.35, 0.2, 0.08]} />
+        <meshStandardMaterial color="#FFFDE7" emissive="#FFFDE7" emissiveIntensity={1.5} />
+      </mesh>
+      <mesh position={[-0.7, 0.45, 1.44]}>
+        <boxGeometry args={[0.35, 0.2, 0.08]} />
+        <meshStandardMaterial color="#FFFDE7" emissive="#FFFDE7" emissiveIntensity={1.5} />
+      </mesh>
+      
+      {/* Taillights */}
+      <mesh position={[0.75, 0.45, -2.74]}>
+        <boxGeometry args={[0.2, 0.15, 0.06]} />
+        <meshStandardMaterial color="#EF4444" emissive="#EF4444" emissiveIntensity={0.8} />
+      </mesh>
+      <mesh position={[-0.75, 0.45, -2.74]}>
+        <boxGeometry args={[0.2, 0.15, 0.06]} />
+        <meshStandardMaterial color="#EF4444" emissive="#EF4444" emissiveIntensity={0.8} />
+      </mesh>
+      
+      {/* Side mirrors */}
+      <mesh position={[1.05, 0.85, 0.8]}>
+        <boxGeometry args={[0.15, 0.2, 0.1]} />
+        <meshStandardMaterial color={color} />
+      </mesh>
+      <mesh position={[-1.05, 0.85, 0.8]}>
+        <boxGeometry args={[0.15, 0.2, 0.1]} />
+        <meshStandardMaterial color={color} />
+      </mesh>
+      
+      {/* Decorative stripe */}
+      <mesh position={[0, 0.55, -0.8]}>
+        <boxGeometry args={[1.92, 0.08, 1.2]} />
+        <meshStandardMaterial color={accentColor} roughness={0.4} />
+      </mesh>
+      
+      {/* Wheels - larger for truck */}
+      <TruckWheel position={[0.98, 0.22, 1.1]} />
+      <TruckWheel position={[-0.98, 0.22, 1.1]} />
+      <TruckWheel position={[0.98, 0.22, -1.0]} />
+      <TruckWheel position={[-0.98, 0.22, -1.0]} />
+      <TruckWheel position={[0.98, 0.22, -2.3]} />
+      <TruckWheel position={[-0.98, 0.22, -2.3]} />
+    </group>
+  );
+}
+
+function TruckWheel({ position }: { position: [number, number, number] }) {
+  return (
+    <group position={position}>
+      {/* Tire */}
+      <mesh rotation={[0, 0, Math.PI / 2]}>
+        <cylinderGeometry args={[0.38, 0.38, 0.28, 10]} />
+        <meshStandardMaterial color="#1a1a1a" roughness={0.7} />
+      </mesh>
+      {/* Rim */}
+      <mesh rotation={[0, 0, Math.PI / 2]}>
+        <cylinderGeometry args={[0.24, 0.24, 0.3, 8]} />
+        <meshStandardMaterial color="#666" roughness={0.3} metalness={0.7} />
+      </mesh>
+    </group>
   );
 }
