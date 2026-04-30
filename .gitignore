@@ -1,3 +1,5 @@
 ```
-.vercel/
+# Build artifacts
+dist/
+build/
 ```
