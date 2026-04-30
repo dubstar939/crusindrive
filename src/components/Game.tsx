@@ -56,6 +56,26 @@ const VEHICLE_CONFIGS = {
 const SEGMENT_LENGTH = 6;
 const VISIBLE_SEGMENTS = 120; // Reduced from 180 for better performance
 const ROAD_PIECES = 40; // Reduced from 50 for better performance
+const ROAD_WIDTH = 14;
+
+const TRACK_DESIGN = {
+  circuit: [
+    { type: 'straight', length: 40 },
+    { type: 'curve', radius: 1.2, angle: 90, length: 15 },
+    { type: 'straight', length: 30 },
+    { type: 'curve', radius: 1.2, angle: 90, length: 15 },
+    { type: 'straight', length: 40 },
+    { type: 'curve', radius: 1.2, angle: 90, length: 15 },
+    { type: 'straight', length: 30 },
+    { type: 'curve', radius: 1.2, angle: 90, length: 15 },
+  ],
+  driftZones: [
+    { x: -150, z: 200, radius: 40, surface: 'gravel' },
+    { x: 150, z: -200, radius: 40, surface: 'dirt' },
+    { x: -200, z: -150, radius: 35, surface: 'gravel' },
+    { x: 200, z: 150, radius: 35, surface: 'dirt' },
+  ],
+};
 
 // ====================================================================
 // OPEN WORLD CITY BLOCK SYSTEM
