@@ -24,6 +24,7 @@ const VEHICLES: { id: VehicleType; label: string; desc: string; icon: string }[]
   { id: 'impreza', label: 'Impreza GC8', desc: 'Rally legend, 165 km/h', icon: '🔵' },
   { id: 'sportbike', label: 'Sport Bike', desc: 'Fast & lean, 195 km/h', icon: '🏍️' },
   { id: 'bus', label: 'City Bus', desc: 'Slow & heavy, 85 km/h', icon: '🚌' },
+  { id: 'truck', label: 'Pickup Truck', desc: 'Sturdy utility, 95 km/h', icon: '🛻' },
 ];
 
 const ENVIRONMENTS: { id: EnvironmentType; label: string; desc: string; icon: string }[] = [
