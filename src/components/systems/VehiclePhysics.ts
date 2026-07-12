@@ -158,7 +158,7 @@ export class VehiclePhysics {
    * Set speed directly (for checkpoints)
    */
   setSpeed(speed: number): void {
-    this.state.speed = Math.max(-config.maxSpeed * 0.3, Math.min(speed, config.maxSpeed));
+    this.state.speed = Math.max(-this.config.maxSpeed * 0.3, Math.min(speed, this.config.maxSpeed));
   }
 }
 
