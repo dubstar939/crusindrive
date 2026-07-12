@@ -19,6 +19,11 @@ interface GameProps {
   onOffRoadChange: (offRoad: boolean) => void;
 }
 
+// Fixed timestep configuration for stable physics
+const PHYSICS_DT = 1 / 60; // 60Hz fixed update
+const MAX_STEPS = 5; // Prevent spiral of death
+const MOVEMENT_SCALE = 0.028; // Calibrated movement scalar (m/s to world units)
+
 interface RoadSegment {
   position: THREE.Vector3;
   rotation: number;
@@ -909,6 +914,10 @@ export default function Game({
   const mountainsRef = useRef<THREE.Group>(null);
   const driftZoneRef = useRef<THREE.Group>(null);
   const driftZonePositionsRef = useRef<Array<{ x: number; z: number; radius: number; surface: string }>>([]);
+  
+  // Fixed timestep accumulator for stable physics integration
+  const timeAccumulatorRef = useRef(0);
+  const lastFrameTimeRef = useRef(0);
 
   const config = VEHICLE_CONFIGS[vehicle];
 
@@ -1090,9 +1099,9 @@ export default function Game({
     driftZonePositionsRef.current = driftZonePositions;
   }, [driftZonePositions]);
 
-  // --- IMPROVED PHYSICS / FRAME LOOP ---
-  useFrame((_, rawDelta) => {
-    const delta = Math.min(rawDelta, 0.05);
+  // --- FIXED TIMESTEP PHYSICS LOOP ---
+  // Implements stable integration pattern to prevent tunneling, jitter, and desync
+  useFrame((state, rawDelta) => {
     const keys = keysPressed.current;
     let accelerating = keys.has('w') || keys.has('arrowup');
     let braking = keys.has('s') || keys.has('arrowdown') || keys.has(' ');
@@ -1102,105 +1111,149 @@ export default function Game({
 
     if (autoDrive) accelerating = true;
 
-    const spd = speedRef.current;
-    const maxSpd = boosting ? config.maxSpeed * 1.2 : config.maxSpeed;
-
-    // Acceleration / braking
-    if (accelerating) {
-      const accelCurve = 1 - (spd / maxSpd) * 0.6; // Less accel at high speed
-      speedRef.current = Math.min(spd + config.acceleration * accelCurve * delta, maxSpd);
-    } else if (braking) {
-      speedRef.current = Math.max(spd - config.acceleration * config.brakeForce * delta, -config.maxSpeed * 0.3);
-    } else {
-      speedRef.current *= config.friction;
-      if (Math.abs(speedRef.current) < 0.2) speedRef.current = 0;
-    }
-
-    // --- IMPROVED STEERING ---
-    // Speed-dependent sensitivity: low speed = tight turn, high speed = less sensitive
-    const speedRatio = Math.abs(speedRef.current) / config.maxSpeed;
-    const speedFactor = Math.max(0.1, Math.min(1.0, speedRatio));
-    const steerSensitivity = config.handling * (0.4 + speedFactor * 0.6);
-    // At very high speed reduce turning radius for stability
-    const highSpeedDamping = speedRatio > 0.7 ? 1 - (speedRatio - 0.7) * 0.8 : 1;
-
-    let targetSteer = 0;
-    if (steeringLeft) targetSteer = 1;
-    if (steeringRight) targetSteer = -1;
-
-    // Smooth steering interpolation
-    steerAngleRef.current = THREE.MathUtils.lerp(
-      steerAngleRef.current,
-      targetSteer,
-      config.turnDamping * delta * 8
-    );
-
-    const actualSteer = steerAngleRef.current * steerSensitivity * highSpeedDamping * delta * 3.0;
-    rotationRef.current += actualSteer * (speedRef.current > 0 ? 1 : speedRef.current < -1 ? -0.5 : 0);
-
-    // Movement
-    positionRef.current.x += Math.sin(rotationRef.current) * speedRef.current * delta * 0.28;
-    positionRef.current.z += Math.cos(rotationRef.current) * speedRef.current * delta * 0.28;
-
-    // Off-road and drift zone detection with enhanced rally physics
-    const roadData = roadSegmentsRef.current;
-    let inDriftZone = false;
-    let currentDriftSurface = '';
+    // Accumulate time for fixed timestep integration
+    timeAccumulatorRef.current += rawDelta;
+    lastFrameTimeRef.current = rawDelta;
     
-    // Check if player is in any drift zone - outer perimeter areas
-    for (const dz of driftZonePositionsRef.current) {
-      const dx = positionRef.current.x - dz.x;
-      const ddz = positionRef.current.z - dz.z;
-      const distToDriftCenter = Math.sqrt(dx * dx + ddz * ddz);
-      if (distToDriftCenter < dz.radius) {
-        inDriftZone = true;
-        currentDriftSurface = dz.surface;
-        break;
+    // Prevent spiral of death on frame drops
+    const clampedDelta = Math.min(rawDelta, 0.1);
+    timeAccumulatorRef.current = Math.min(timeAccumulatorRef.current, 0.25);
+
+    // Fixed timestep physics updates (60Hz)
+    let steps = 0;
+    while (timeAccumulatorRef.current >= PHYSICS_DT && steps < MAX_STEPS) {
+      const spd = speedRef.current;
+      const maxSpd = boosting ? config.maxSpeed * 1.2 : config.maxSpeed;
+
+      // Acceleration / braking with traction modeling
+      let tractionMultiplier = 1.0;
+      let inDriftZoneLocal = false;
+      let currentDriftSurfaceLocal = '';
+
+      // Check drift zones for surface-specific traction
+      for (const dz of driftZonePositionsRef.current) {
+        const dx = positionRef.current.x - dz.x;
+        const ddz = positionRef.current.z - dz.z;
+        const distToDriftCenter = Math.sqrt(dx * dx + ddz * ddz);
+        if (distToDriftCenter < dz.radius) {
+          inDriftZoneLocal = true;
+          currentDriftSurfaceLocal = dz.surface;
+          break;
+        }
       }
-    }
-    
-    if (roadData.length > 0) {
-      let onRoad = false;
-      for (const seg of roadData) {
-        const dx = positionRef.current.x - seg.position.x;
-        const dz = positionRef.current.z - seg.position.z;
-        const dist = Math.sqrt(dx * dx + dz * dz);
-        if (dist < ROAD_WIDTH / 2 + 1.5) { onRoad = true; break; }
+
+      // Surface detection for traction
+      const roadData = roadSegmentsRef.current;
+      let onRoad = true;
+      if (roadData.length > 0 && !inDriftZoneLocal) {
+        onRoad = false;
+        for (const seg of roadData) {
+          const dx = positionRef.current.x - seg.position.x;
+          const dz = positionRef.current.z - seg.position.z;
+          const dist = Math.sqrt(dx * dx + dz * dz);
+          if (dist < ROAD_WIDTH / 2 + 1.5) { onRoad = true; break; }
+        }
       }
-      
-      // In drift zones: enhanced drift physics with surface-specific handling
-      if (inDriftZone) {
-        onOffRoadChange(false);
-        // Gravel offers more slide, dirt is slightly more grippy
-        const surfaceDriftFactor = currentDriftSurface === 'gravel' ? config.driftFactor * 0.97 : config.driftFactor;
-        speedRef.current *= surfaceDriftFactor; // Better slide in drift zones
+
+      // Apply surface traction multipliers
+      if (inDriftZoneLocal) {
+        tractionMultiplier = currentDriftSurfaceLocal === 'gravel' ? 0.85 : 0.90;
+      } else if (!onRoad) {
+        tractionMultiplier = 0.70; // Grass/dirt off-road
+      }
+
+      // Physics calculations at fixed timestep
+      if (accelerating) {
+        const accelCurve = 1 - (spd / maxSpd) * 0.6;
+        speedRef.current = Math.min(
+          spd + config.acceleration * accelCurve * PHYSICS_DT * tractionMultiplier,
+          maxSpd
+        );
+      } else if (braking) {
+        speedRef.current = Math.max(
+          spd - config.acceleration * config.brakeForce * PHYSICS_DT * tractionMultiplier,
+          -config.maxSpeed * 0.3
+        );
       } else {
-        onOffRoadChange(!onRoad && Math.abs(speedRef.current) > 8);
-        // Slow down off-road (but not in drift zones)
-        if (!onRoad) {
-          speedRef.current *= 0.993;
+        // Natural deceleration with surface friction
+        const effectiveFriction = Math.pow(config.friction, tractionMultiplier);
+        speedRef.current *= effectiveFriction;
+        if (Math.abs(speedRef.current) < 0.15) speedRef.current = 0;
+      }
+
+      // Steering with speed-dependent sensitivity
+      const speedRatio = Math.abs(speedRef.current) / config.maxSpeed;
+      const speedFactor = Math.max(0.1, Math.min(1.0, speedRatio));
+      const steerSensitivity = config.handling * (0.4 + speedFactor * 0.6);
+      const highSpeedDamping = speedRatio > 0.7 ? 1 - (speedRatio - 0.7) * 0.8 : 1;
+
+      let targetSteer = 0;
+      if (steeringLeft) targetSteer = 1;
+      if (steeringRight) targetSteer = -1;
+
+      // Smooth steering interpolation
+      steerAngleRef.current = THREE.MathUtils.lerp(
+        steerAngleRef.current,
+        targetSteer,
+        config.turnDamping * PHYSICS_DT * 8
+      );
+
+      // Apply steering to rotation
+      const actualSteer = steerAngleRef.current * steerSensitivity * highSpeedDamping * PHYSICS_DT * 3.0;
+      rotationRef.current += actualSteer * (speedRef.current > 0 ? 1 : speedRef.current < -1 ? -0.5 : 0);
+      rotationRef.current = THREE.MathUtils.normalizeAngle(rotationRef.current);
+
+      // Position update with calibrated movement scale
+      positionRef.current.x += Math.sin(rotationRef.current) * speedRef.current * PHYSICS_DT * MOVEMENT_SCALE;
+      positionRef.current.z += Math.cos(rotationRef.current) * speedRef.current * PHYSICS_DT * MOVEMENT_SCALE;
+
+      // Off-road feedback (only update once per frame, not per substep)
+      if (steps === 0 && roadData.length > 0) {
+        if (inDriftZoneLocal) {
+          onOffRoadChange(false);
+        } else {
+          onOffRoadChange(!onRoad && Math.abs(speedRef.current) > 8);
         }
       }
+
+      // Drift zone speed modification (applied once per substep for consistency)
+      if (inDriftZoneLocal) {
+        const surfaceDriftFactor = currentDriftSurfaceLocal === 'gravel' 
+          ? config.driftFactor * 0.97 
+          : config.driftFactor;
+        speedRef.current *= surfaceDriftFactor;
+      } else if (!onRoad && Math.abs(speedRef.current) > 5) {
+        speedRef.current *= 0.995;
+      }
+
+      // Autodrive AI steering correction
+      if (autoDrive && roadData.length > 0) {
+        let bestSeg: RoadSegment | null = null;
+        let bestDist = Infinity;
+        for (const seg of roadData) {
+          const ahead = seg.position.z - positionRef.current.z;
+          if (ahead > 15 && ahead < 80) {
+            const d = Math.abs(ahead - 40);
+            if (d < bestDist) { bestDist = d; bestSeg = seg; }
+          }
+        }
+        if (bestSeg) {
+          const dx = bestSeg.position.x - positionRef.current.x;
+          const targetAngle = Math.atan2(dx, bestSeg.position.z - positionRef.current.z);
+          const diff = targetAngle - rotationRef.current;
+          rotationRef.current += diff * 3.0 * PHYSICS_DT;
+          rotationRef.current = THREE.MathUtils.normalizeAngle(rotationRef.current);
+        }
+      }
+
+      timeAccumulatorRef.current -= PHYSICS_DT;
+      steps++;
     }
 
-    // Autodrive AI
-    if (autoDrive && roadData.length > 0) {
-      let bestSeg: RoadSegment | null = null;
-      let bestDist = Infinity;
-      for (const seg of roadData) {
-        const ahead = seg.position.z - positionRef.current.z;
-        if (ahead > 15 && ahead < 80) {
-          const d = Math.abs(ahead - 40);
-          if (d < bestDist) { bestDist = d; bestSeg = seg; }
-        }
-      }
-      if (bestSeg) {
-        const dx = bestSeg.position.x - positionRef.current.x;
-        const targetAngle = Math.atan2(dx, bestSeg.position.z - positionRef.current.z);
-        const diff = targetAngle - rotationRef.current;
-        rotationRef.current += diff * 3.0 * delta;
-      }
-    }
+    // Visual interpolation using remaining accumulator for smooth rendering
+    const interpolationAlpha = Math.max(0, Math.min(1, 
+      timeAccumulatorRef.current / PHYSICS_DT + (steps >= MAX_STEPS ? 1 : 0)
+    ));
 
     // Apply vehicle transform
     if (vehicleRef.current) {
