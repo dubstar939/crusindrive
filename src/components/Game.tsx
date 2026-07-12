@@ -781,20 +781,20 @@ function PalmTree({ position, scale = 1 }: { position: THREE.Vector3; scale?: nu
   return (
     <group position={position}>
       {/* Trunk — curved using two segments */}
-      <mesh position={[0, scale * 2, 0]} castShadow>
+      <mesh position={[0, scale * 2, 0]} castShadow frustumCulled>
         <cylinderGeometry args={[0.12 * scale, 0.2 * scale, scale * 4, 6]} />
         <meshStandardMaterial color="#8B6914" roughness={0.8} />
       </mesh>
       {/* Fronds (4 leaf clusters) */}
       {[0, Math.PI / 2, Math.PI, Math.PI * 1.5].map((rot, i) => (
         <mesh key={i} position={[Math.sin(rot) * 0.6 * scale, scale * 4.2, Math.cos(rot) * 0.6 * scale]}
-          rotation={[Math.sin(rot) * 0.5, rot, Math.cos(rot) * 0.3]} castShadow>
+          rotation={[Math.sin(rot) * 0.5, rot, Math.cos(rot) * 0.3]} castShadow frustumCulled>
           <boxGeometry args={[0.15 * scale, 0.04 * scale, 1.8 * scale]} />
           <meshStandardMaterial color="#2D5A27" roughness={0.7} />
         </mesh>
       ))}
       {/* Top cluster */}
-      <mesh position={[0, scale * 4.1, 0]} castShadow>
+      <mesh position={[0, scale * 4.1, 0]} castShadow frustumCulled>
         <sphereGeometry args={[0.4 * scale, 6, 6]} />
         <meshStandardMaterial color="#3A7D34" roughness={0.6} />
       </mesh>
@@ -808,7 +808,7 @@ function Building({ position, width, height, depth, color }: {
   return (
     <group position={position}>
       {/* Main structure */}
-      <mesh position={[0, height / 2, 0]} castShadow>
+      <mesh position={[0, height / 2, 0]} castShadow frustumCulled>
         <boxGeometry args={[width, height, depth]} />
         <meshStandardMaterial color={color} roughness={0.65} />
       </mesh>
@@ -820,14 +820,14 @@ function Building({ position, width, height, depth, color }: {
               -width / 2 + 0.8 + col * 1.5,
               1.2 + row * 1.8,
               depth / 2 + 0.02,
-            ]}>
+            ]} frustumCulled>
             <boxGeometry args={[0.6, 0.8, 0.04]} />
             <meshStandardMaterial color="#5A8FA8" roughness={0.1} opacity={0.7} transparent />
           </mesh>
         ))
       )}
       {/* Roof accent */}
-      <mesh position={[0, height + 0.08, 0]}>
+      <mesh position={[0, height + 0.08, 0]} frustumCulled>
         <boxGeometry args={[width + 0.1, 0.15, depth + 0.1]} />
         <meshStandardMaterial color="#777" roughness={0.5} />
       </mesh>
@@ -839,7 +839,7 @@ function Mountain({ position, radius, height, color }: {
   position: THREE.Vector3; radius: number; height: number; color: string;
 }) {
   return (
-    <mesh position={position} castShadow>
+    <mesh position={position} castShadow frustumCulled>
       <coneGeometry args={[radius, height, 7]} />
       <meshStandardMaterial color={color} roughness={0.8} flatShading />
     </mesh>
@@ -1489,15 +1489,15 @@ export default function Game({
             {prop.type === 'palm' && <PalmTree position={new THREE.Vector3(0, 0, 0)} scale={prop.scale} />}
             {prop.type === 'tree' && (
               <>
-                <mesh position={[0, prop.scale * 1.5, 0]} castShadow>
+                <mesh position={[0, prop.scale * 1.5, 0]} castShadow frustumCulled>
                   <cylinderGeometry args={[0.15, 0.22, prop.scale * 3, 6]} />
                   <meshStandardMaterial color="#6B4423" roughness={0.8} />
                 </mesh>
-                <mesh position={[0, prop.scale * 3.2, 0]} castShadow>
+                <mesh position={[0, prop.scale * 3.2, 0]} castShadow frustumCulled>
                   <coneGeometry args={[prop.scale * 1.4, prop.scale * 3, 7]} />
                   <meshStandardMaterial color="#2D5A27" roughness={0.7} flatShading />
                 </mesh>
-                <mesh position={[0, prop.scale * 4.5, 0]} castShadow>
+                <mesh position={[0, prop.scale * 4.5, 0]} castShadow frustumCulled>
                   <coneGeometry args={[prop.scale * 1.0, prop.scale * 2.2, 7]} />
                   <meshStandardMaterial color="#3A7D34" roughness={0.7} flatShading />
                 </mesh>
@@ -1514,15 +1514,15 @@ export default function Game({
             )}
             {prop.type === 'pole' && (
               <group>
-                <mesh position={[0, 3, 0]} castShadow>
+                <mesh position={[0, 3, 0]} castShadow frustumCulled>
                   <cylinderGeometry args={[0.06, 0.08, 6, 6]} />
                   <meshStandardMaterial color="#666" roughness={0.5} metalness={0.3} />
                 </mesh>
-                <mesh position={[1, 5.8, 0]}>
+                <mesh position={[1, 5.8, 0]} frustumCulled>
                   <boxGeometry args={[2.2, 0.08, 0.08]} />
                   <meshStandardMaterial color="#666" />
                 </mesh>
-                <mesh position={[2, 5.65, 0]}>
+                <mesh position={[2, 5.65, 0]} frustumCulled>
                   <boxGeometry args={[0.4, 0.1, 0.25]} />
                   <meshStandardMaterial
                     color="#FEF3C7"

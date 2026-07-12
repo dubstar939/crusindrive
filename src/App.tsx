@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Canvas } from '@react-three/fiber';
+import * as THREE from 'three';
 import Game, { VehicleType, EnvironmentType, TimeOfDayType, WeatherType } from './components/Game';
 import UI from './components/UI';
 
@@ -43,8 +44,16 @@ function App() {
     <div className="w-full h-screen bg-black text-gray-100 overflow-hidden relative select-none antialiased">
       <Canvas
         camera={{ position: [0, 4, -10], fov: 60 }}
-        gl={{ antialias: true, preserveDrawingBuffer: true }}
+        gl={{ 
+          antialias: true, 
+          preserveDrawingBuffer: true,
+          shadowMap: {
+            enabled: true,
+            type: THREE.PCFSoftShadowMap,
+          },
+        }}
         shadows
+        dpr={[1, 2]}
       >
         <Game
           vehicle={vehicle}
