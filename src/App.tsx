@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Canvas } from '@react-three/fiber';
 import * as THREE from 'three';
-import Game, { VehicleType, EnvironmentType, TimeOfDayType, WeatherType } from './components/Game';
+import Game, { VehicleType, EnvironmentType, TimeOfDayType, WeatherType, VEHICLE_CONFIGS } from './components/Game';
 import UI from './components/UI';
+import { HUD } from './components/HUD';
 
 function App() {
   const [vehicle, setVehicle] = useState<VehicleType>('evo');
@@ -11,6 +12,9 @@ function App() {
   const [weather, setWeather] = useState<WeatherType>('clear');
   const [autoDrive, setAutoDrive] = useState(false);
   const [speed, setSpeed] = useState(0);
+  const [rpm, setRpm] = useState(0);
+  const [gear, setGear] = useState(1);
+  const [isDrifting, setIsDrifting] = useState(false);
   const [isOffRoad, setIsOffRoad] = useState(false);
   const [cameraMode, setCameraMode] = useState(0);
 
@@ -65,8 +69,21 @@ function App() {
           keysPressed={keysPressed}
           onSpeedChange={setSpeed}
           onOffRoadChange={setIsOffRoad}
+          onGearChange={setGear}
+          onRpmChange={setRpm}
+          onDriftChange={setIsDrifting}
         />
       </Canvas>
+
+      {/* New HUD overlay with drift indicator and improved readability */}
+      <HUD
+        speed={speed}
+        rpm={rpm}
+        maxRpm={VEHICLE_CONFIGS[vehicle].maxRpm}
+        gear={gear}
+        isDrifting={isDrifting}
+        isMobile={false}
+      />
 
       <UI
         speed={speed}

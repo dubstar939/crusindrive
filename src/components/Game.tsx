@@ -17,6 +17,9 @@ interface GameProps {
   keysPressed: React.MutableRefObject<Set<string>>;
   onSpeedChange: (speed: number) => void;
   onOffRoadChange: (offRoad: boolean) => void;
+  onDriftChange?: (drifting: boolean) => void;
+  onGearChange?: (gear: number) => void;
+  onRpmChange?: (rpm: number) => void;
 }
 
 // Fixed timestep configuration for stable physics
@@ -31,30 +34,36 @@ interface RoadSegment {
 }
 
 // --- Vehicle physics configs per type ---
-const VEHICLE_CONFIGS = {
+export const VEHICLE_CONFIGS = {
   evo: {
     maxSpeed: 170, acceleration: 65, handling: 2.2, friction: 0.985, brakeForce: 1.8,
     driftFactor: 0.92, turnDamping: 0.88, bodyColor: '#CC2222', accentColor: '#333333',
+    maxRpm: 8000,
   },
   wrx: {
     maxSpeed: 155, acceleration: 58, handling: 2.6, friction: 0.983, brakeForce: 1.7,
     driftFactor: 0.90, turnDamping: 0.85, bodyColor: '#E8E8E8', accentColor: '#555555',
+    maxRpm: 7500,
   },
   impreza: {
     maxSpeed: 165, acceleration: 62, handling: 2.4, friction: 0.984, brakeForce: 1.9,
     driftFactor: 0.88, turnDamping: 0.86, bodyColor: '#1E3A8A', accentColor: '#D4A017',
+    maxRpm: 7800,
   },
   sportbike: {
     maxSpeed: 195, acceleration: 80, handling: 3.6, friction: 0.978, brakeForce: 2.2,
     driftFactor: 0.95, turnDamping: 0.92, bodyColor: '#CC2222', accentColor: '#111111',
+    maxRpm: 14000,
   },
   bus: {
     maxSpeed: 85, acceleration: 28, handling: 1.0, friction: 0.990, brakeForce: 1.2,
     driftFactor: 0.98, turnDamping: 0.80, bodyColor: '#2563EB', accentColor: '#E5E7EB',
+    maxRpm: 4500,
   },
   truck: {
     maxSpeed: 95, acceleration: 32, handling: 1.2, friction: 0.988, brakeForce: 1.4,
     driftFactor: 0.96, turnDamping: 0.82, bodyColor: '#8B4513', accentColor: '#CD853F',
+    maxRpm: 5000,
   },
 };
 
@@ -901,6 +910,9 @@ export default function Game({
   keysPressed,
   onSpeedChange,
   onOffRoadChange,
+  onDriftChange,
+  onGearChange,
+  onRpmChange,
 }: GameProps) {
   const { camera } = useThree();
   const vehicleRef = useRef<THREE.Group>(null);
@@ -1291,7 +1303,19 @@ export default function Game({
       positionRef.current.z + Math.cos(rotationRef.current) * 12,
     );
 
-    onSpeedChange(Math.abs(speedRef.current));
+    // Calculate gear and RPM for UI
+    const currentSpeed = Math.abs(speedRef.current);
+    const gear = currentSpeed > 130 ? 5 : currentSpeed > 90 ? 4 : currentSpeed > 50 ? 3 : currentSpeed > 15 ? 2 : 1;
+    const rpm = Math.min((currentSpeed % 40) / 40 * config.maxRpm, config.maxRpm);
+    
+    // Detect drifting: high steer angle + lateral slip
+    const isDrifting = inDriftZoneLocal || (!onRoad && Math.abs(steerAngleRef.current) > 0.5 && currentSpeed > 30);
+    
+    // Emit UI state updates (throttled by frame rate naturally)
+    onSpeedChange(currentSpeed);
+    onGearChange?.(gear);
+    onRpmChange?.(rpm);
+    onDriftChange?.(isDrifting);
 
     // Update road pieces
     if (roadPiecesRef.current) {
