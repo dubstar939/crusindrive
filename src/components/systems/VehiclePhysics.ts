@@ -114,8 +114,8 @@ export class VehiclePhysics {
     const directionMultiplier = state.speed > 0 ? 1 : state.speed < -1 ? -0.5 : 0;
     state.rotation += actualSteer * directionMultiplier;
 
-    // Normalize rotation
-    state.rotation = THREE.MathUtils.normalizeAngle(state.rotation);
+    // Normalize rotation to [-PI, PI]
+    state.rotation = ((state.rotation + Math.PI) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI) - Math.PI;
 
     // Calculate slip angle for drift visualization
     const lateralVelocity = state.speed * Math.sin(state.steerAngle * 0.5);
