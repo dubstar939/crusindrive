@@ -1140,6 +1140,9 @@ export default function Game({
     const roadData = roadSegmentsRef.current;
     const driftZones = driftZonePositionsRef.current;
     
+    // Calculate speedRatio once per frame for camera/UI (outside physics loop)
+    const speedRatio = Math.abs(speedRef.current) / config.maxSpeed;
+    
     // Pre-compute drift zone check once per frame (not per substep)
     let frameInDriftZone = false;
     let frameDriftSurface = '';
@@ -1212,7 +1215,7 @@ export default function Game({
       }
 
       // Steering with speed-dependent sensitivity
-      const speedRatio = Math.abs(speedRef.current) / config.maxSpeed;
+      // Use frame-level speedRatio for consistency (avoid per-substep recalculation)
       const speedFactor = Math.max(0.1, Math.min(1.0, speedRatio));
       const steerSensitivity = config.handling * (0.4 + speedFactor * 0.6);
       const highSpeedDamping = speedRatio > 0.7 ? 1 - (speedRatio - 0.7) * 0.8 : 1;
@@ -1335,7 +1338,7 @@ export default function Game({
     const rpm = Math.min((currentSpeed % 40) / 40 * config.maxRpm, config.maxRpm);
     
     // Detect drifting: high steer angle + lateral slip
-    const isDrifting = inDriftZoneLocal || (!onRoad && Math.abs(steerAngleRef.current) > 0.5 && currentSpeed > 30);
+    const isDrifting = frameInDriftZone || (!onRoad && Math.abs(steerAngleRef.current) > 0.5 && currentSpeed > 30);
     
     // Emit UI state updates (throttled by frame rate naturally)
     onSpeedChange(currentSpeed);
