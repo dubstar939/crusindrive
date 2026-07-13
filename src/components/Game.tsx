@@ -1213,7 +1213,8 @@ export default function Game({
       // Apply steering to rotation
       const actualSteer = steerAngleRef.current * steerSensitivity * highSpeedDamping * PHYSICS_DT * 3.0;
       rotationRef.current += actualSteer * (speedRef.current > 0 ? 1 : speedRef.current < -1 ? -0.5 : 0);
-      rotationRef.current = THREE.MathUtils.normalizeAngle(rotationRef.current);
+      // Normalize rotation to [-PI, PI]
+      rotationRef.current = ((rotationRef.current + Math.PI) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI) - Math.PI;
 
       // Position update with calibrated movement scale
       positionRef.current.x += Math.sin(rotationRef.current) * speedRef.current * PHYSICS_DT * MOVEMENT_SCALE;
@@ -1254,7 +1255,8 @@ export default function Game({
           const targetAngle = Math.atan2(dx, bestSeg.position.z - positionRef.current.z);
           const diff = targetAngle - rotationRef.current;
           rotationRef.current += diff * 3.0 * PHYSICS_DT;
-          rotationRef.current = THREE.MathUtils.normalizeAngle(rotationRef.current);
+          // Normalize rotation to [-PI, PI]
+          rotationRef.current = ((rotationRef.current + Math.PI) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI) - Math.PI;
         }
       }
 
