@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { VehicleType, EnvironmentType, TimeOfDayType, WeatherType } from './Game';
 
 interface UIProps {
@@ -68,8 +68,15 @@ export default function UI({
   const [menuOpen, setMenuOpen] = useState(true);
   const [activeTab, setActiveTab] = useState<'vehicle' | 'route' | 'conditions'>('vehicle');
 
-  const gear = speed > 130 ? 5 : speed > 90 ? 4 : speed > 50 ? 3 : speed > 15 ? 2 : 1;
-  const rpmPercent = Math.min(((speed % 40) / 40) * 100, 100);
+  // Memoize gear calculation to avoid recalculation on every render
+  const gear = useMemo(() => {
+    return speed > 130 ? 5 : speed > 90 ? 4 : speed > 50 ? 3 : speed > 15 ? 2 : 1;
+  }, [speed]);
+
+  // Memoize RPM percentage calculation
+  const rpmPercent = useMemo(() => {
+    return Math.min(((speed % 40) / 40) * 100, 100);
+  }, [speed]);
 
   return (
     <div className="absolute inset-0 pointer-events-none flex flex-col justify-between p-4 md:p-6 select-none"

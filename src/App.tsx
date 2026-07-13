@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { Canvas } from '@react-three/fiber';
 import * as THREE from 'three';
 import Game, { VehicleType, EnvironmentType, TimeOfDayType, WeatherType, VEHICLE_CONFIGS } from './components/Game';
@@ -20,6 +20,7 @@ function App() {
 
   const keysPressed = useRef<Set<string>>(new Set());
 
+  // Memoize event handlers to prevent unnecessary re-creation
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
     keysPressed.current.add(e.key.toLowerCase());
 
@@ -35,6 +36,7 @@ function App() {
     keysPressed.current.delete(e.key.toLowerCase());
   }, []);
 
+  // Setup keyboard listeners once on mount
   useEffect(() => {
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
@@ -44,17 +46,20 @@ function App() {
     };
   }, [handleKeyDown, handleKeyUp]);
 
+  // Memoize canvas configuration to prevent unnecessary re-renders
+  const canvasConfig = useMemo(() => ({
+    camera: { position: [0, 4, -10] as [number, number, number], fov: 60 },
+    gl: { 
+      antialias: true, 
+      preserveDrawingBuffer: true,
+    },
+    shadows: true,
+    dpr: [1, 2] as [number, number],
+  }), []);
+
   return (
     <div className="w-full h-screen bg-black text-gray-100 overflow-hidden relative select-none antialiased">
-      <Canvas
-        camera={{ position: [0, 4, -10], fov: 60 }}
-        gl={{ 
-          antialias: true, 
-          preserveDrawingBuffer: true,
-        }}
-        shadows
-        dpr={[1, 2]}
-      >
+      <Canvas {...canvasConfig}>
         <Game
           vehicle={vehicle}
           environment={environment}
