@@ -51,10 +51,6 @@ function App() {
         gl={{ 
           antialias: true, 
           preserveDrawingBuffer: true,
-          shadowMap: {
-            enabled: true,
-            type: THREE.PCFSoftShadowMap,
-          },
         }}
         shadows
         dpr={[1, 2]}
