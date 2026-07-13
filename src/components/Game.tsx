@@ -856,7 +856,7 @@ function Mountain({ position, radius, height, color }: {
 }
 
 // ====================================================================
-// RAIN PARTICLES
+// RAIN PARTICLES (Optimized)
 // ====================================================================
 function RainParticles({ count, playerPos }: { count: number; playerPos: React.MutableRefObject<THREE.Vector3> }) {
   const ref = useRef<THREE.Points>(null);
@@ -875,12 +875,16 @@ function RainParticles({ count, playerPos }: { count: number; playerPos: React.M
     const geo = ref.current.geometry;
     const pos = geo.attributes.position as THREE.BufferAttribute;
     const pPos = playerPos.current;
+    const arr = pos.array;
+    
+    // Optimize: cache values and use direct array access
     for (let i = 0; i < count; i++) {
-      pos.array[i * 3 + 1] -= 30 * delta;
-      if (pos.array[i * 3 + 1] < -1) {
-        pos.array[i * 3 + 1] = 25 + Math.random() * 10;
-        pos.array[i * 3] = pPos.x + (Math.random() - 0.5) * 80;
-        pos.array[i * 3 + 2] = pPos.z + (Math.random() - 0.5) * 80;
+      const idx = i * 3;
+      arr[idx + 1] -= 30 * delta;
+      if (arr[idx + 1] < -1) {
+        arr[idx + 1] = 25 + Math.random() * 10;
+        arr[idx] = pPos.x + (Math.random() - 0.5) * 80;
+        arr[idx + 2] = pPos.z + (Math.random() - 0.5) * 80;
       }
     }
     pos.needsUpdate = true;
@@ -1131,6 +1135,26 @@ export default function Game({
     const clampedDelta = Math.min(rawDelta, 0.1);
     timeAccumulatorRef.current = Math.min(timeAccumulatorRef.current, 0.25);
 
+    // Cache refs for performance
+    const position = positionRef.current;
+    const roadData = roadSegmentsRef.current;
+    const driftZones = driftZonePositionsRef.current;
+    
+    // Pre-compute drift zone check once per frame (not per substep)
+    let frameInDriftZone = false;
+    let frameDriftSurface = '';
+    for (let i = 0; i < driftZones.length; i++) {
+      const dz = driftZones[i];
+      const dx = position.x - dz.x;
+      const ddz = position.z - dz.z;
+      const distSq = dx * dx + ddz * ddz;
+      if (distSq < dz.radius * dz.radius) {
+        frameInDriftZone = true;
+        frameDriftSurface = dz.surface;
+        break;
+      }
+    }
+
     // Fixed timestep physics updates (60Hz)
     let steps = 0;
     while (timeAccumulatorRef.current >= PHYSICS_DT && steps < MAX_STEPS) {
@@ -1139,31 +1163,25 @@ export default function Game({
 
       // Acceleration / braking with traction modeling
       let tractionMultiplier = 1.0;
-      let inDriftZoneLocal = false;
-      let currentDriftSurfaceLocal = '';
+      const inDriftZoneLocal = frameInDriftZone;
+      const currentDriftSurfaceLocal = frameDriftSurface;
 
-      // Check drift zones for surface-specific traction
-      for (const dz of driftZonePositionsRef.current) {
-        const dx = positionRef.current.x - dz.x;
-        const ddz = positionRef.current.z - dz.z;
-        const distToDriftCenter = Math.sqrt(dx * dx + ddz * ddz);
-        if (distToDriftCenter < dz.radius) {
-          inDriftZoneLocal = true;
-          currentDriftSurfaceLocal = dz.surface;
-          break;
-        }
-      }
-
-      // Surface detection for traction
-      const roadData = roadSegmentsRef.current;
+      // Surface detection for traction (optimized with squared distance)
       let onRoad = true;
       if (roadData.length > 0 && !inDriftZoneLocal) {
         onRoad = false;
-        for (const seg of roadData) {
-          const dx = positionRef.current.x - seg.position.x;
-          const dz = positionRef.current.z - seg.position.z;
-          const dist = Math.sqrt(dx * dx + dz * dz);
-          if (dist < ROAD_WIDTH / 2 + 1.5) { onRoad = true; break; }
+        const roadHalfWidth = ROAD_WIDTH / 2 + 1.5;
+        const roadHalfWidthSq = roadHalfWidth * roadHalfWidth;
+        const px = position.x;
+        const pz = position.z;
+        for (let i = 0; i < roadData.length; i++) {
+          const seg = roadData[i];
+          const dx = px - seg.position.x;
+          const dz = pz - seg.position.z;
+          if (dx * dx + dz * dz < roadHalfWidthSq) { 
+            onRoad = true; 
+            break; 
+          }
         }
       }
 
@@ -1239,20 +1257,26 @@ export default function Game({
         speedRef.current *= 0.995;
       }
 
-      // Autodrive AI steering correction
+      // Autodrive AI steering correction (optimized with squared distance)
       if (autoDrive && roadData.length > 0) {
         let bestSeg: RoadSegment | null = null;
-        let bestDist = Infinity;
-        for (const seg of roadData) {
-          const ahead = seg.position.z - positionRef.current.z;
+        let bestDistSq = Infinity;
+        const pz = position.z;
+        const px = position.x;
+        for (let i = 0; i < roadData.length; i++) {
+          const seg = roadData[i];
+          const ahead = seg.position.z - pz;
           if (ahead > 15 && ahead < 80) {
-            const d = Math.abs(ahead - 40);
-            if (d < bestDist) { bestDist = d; bestSeg = seg; }
+            const dSq = (ahead - 40) * (ahead - 40);
+            if (dSq < bestDistSq) { 
+              bestDistSq = dSq; 
+              bestSeg = seg; 
+            }
           }
         }
         if (bestSeg) {
-          const dx = bestSeg.position.x - positionRef.current.x;
-          const targetAngle = Math.atan2(dx, bestSeg.position.z - positionRef.current.z);
+          const dx = bestSeg.position.x - px;
+          const targetAngle = Math.atan2(dx, bestSeg.position.z - pz);
           const diff = targetAngle - rotationRef.current;
           rotationRef.current += diff * 3.0 * PHYSICS_DT;
           // Normalize rotation to [-PI, PI]
@@ -1319,61 +1343,70 @@ export default function Game({
     onRpmChange?.(rpm);
     onDriftChange?.(isDrifting);
 
-    // Update road pieces
+    // Update road pieces (optimized with cached values)
     if (roadPiecesRef.current) {
-      const playerZ = positionRef.current.z;
+      const playerZ = position.z;
       const baseIndex = Math.floor(playerZ / SEGMENT_LENGTH);
-      roadPiecesRef.current.children.forEach((piece, i) => {
+      const children = roadPiecesRef.current.children;
+      for (let i = 0; i < children.length; i++) {
+        const piece = children[i];
         const segIndex = (baseIndex + i - 12) % roadData.length;
         if (segIndex >= 0 && segIndex < roadData.length) {
           const seg = roadData[segIndex];
           piece.position.set(seg.position.x, 0, seg.position.z);
           piece.rotation.y = seg.rotation;
         }
-      });
+      }
     }
 
-    // Recycle props
+    // Recycle props (optimized loop)
     if (propsRef.current) {
-      const playerZ = positionRef.current.z;
-      propsRef.current.children.forEach((_prop, i) => {
+      const playerZ = position.z;
+      const threshold = -40;
+      const wrapDistance = VISIBLE_SEGMENTS * SEGMENT_LENGTH;
+      const children = propsRef.current.children;
+      for (let i = 0; i < children.length; i++) {
         const pd = propData[i];
-        if (pd && pd.position.z - playerZ < -40) {
-          pd.position.z += VISIBLE_SEGMENTS * SEGMENT_LENGTH;
+        if (pd && pd.position.z - playerZ < threshold) {
+          pd.position.z += wrapDistance;
         }
-      });
+      }
     }
 
-    // Recycle mountains
+    // Recycle mountains (optimized loop)
     if (mountainsRef.current) {
-      const playerZ = positionRef.current.z;
-      mountainsRef.current.children.forEach((_m, i) => {
+      const playerZ = position.z;
+      const threshold = -100;
+      const wrapDistance = VISIBLE_SEGMENTS * SEGMENT_LENGTH;
+      const children = mountainsRef.current.children;
+      for (let i = 0; i < children.length; i++) {
         const md = mountainData[i];
-        if (md && md.position.z - playerZ < -100) {
-          md.position.z += VISIBLE_SEGMENTS * SEGMENT_LENGTH;
+        if (md && md.position.z - playerZ < threshold) {
+          md.position.z += wrapDistance;
         }
-      });
+      }
     }
     
-    // Recycle drift zones (loop them around the track)
+    // Recycle drift zones (loop them around the track - optimized)
     if (driftZoneRef.current && driftZonePositionsRef.current.length > 0) {
-      const playerZ = positionRef.current.z;
+      const playerZ = position.z;
       const trackLength = VISIBLE_SEGMENTS * SEGMENT_LENGTH;
+      const children = driftZoneRef.current.children;
       
-      driftZoneRef.current.children.forEach((dz, i) => {
+      for (let i = 0; i < children.length; i++) {
         const zd = driftZonePositionsRef.current[i];
         if (zd) {
           const relZ = zd.z - playerZ;
           // Wrap drift zone positions when player passes them
           if (relZ < -200) {
             zd.z += trackLength;
-            dz.position.z = zd.z;
+            children[i].position.z = zd.z;
           } else if (relZ > trackLength + 200) {
             zd.z -= trackLength;
-            dz.position.z = zd.z;
+            children[i].position.z = zd.z;
           }
         }
-      });
+      }
     }
     
     // Update rain particles less frequently for performance
